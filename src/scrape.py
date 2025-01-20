@@ -30,8 +30,10 @@ class EstanteVirtual(scrapy.Spider):
             data_layer = json.loads(
                 response.css("script::text")[1].get().strip().split("= ")[1]
             )[0]
+            """             
             with open("1_get_books.json", "w") as f:
                 json.dump(data_layer, f, ensure_ascii=False, indent=4)
+             """
             books = data_layer["ecommerce"]["impressions"]
             for book in books:
                 book_name = book["name"]
@@ -68,11 +70,11 @@ class EstanteVirtual(scrapy.Spider):
         )
 
         data_json = json.loads(data_layer)
-
+        """ 
         with open("2_get_book_data.json", "w") as f:
             json.dump(data_json, f, ensure_ascii=False, indent=4)
-
-        grup_book_id = data_json["Product"]["internalGroupSlug"]
+        """
+        grup_book_id = data_json["Product"].get("internalGroupSlug", "")
         grup_book_id = grup_book_id.split("-")[-4:]
         grup_book_id = "-".join(grup_book_id).strip('"')
 
@@ -98,9 +100,10 @@ class EstanteVirtual(scrapy.Spider):
     def get_grup_book_data(self, response: Response):
         data = response.json()
 
+        """
         with open("3_get_group_book_data.json", "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-
+        """
         books_list = []
         skus = data["parentSkus"]
         for sku in skus:
@@ -121,6 +124,7 @@ class EstanteVirtual(scrapy.Spider):
 
             book = {
                 "name": unit_name,
+                "author": response.meta["author"],
                 "group_id": unit_group_id,
                 "id": unit_id,
                 "description": unit_description,
@@ -133,10 +137,14 @@ class EstanteVirtual(scrapy.Spider):
                 "image": unit_image,
                 "review_stars": unit_review_stars,
                 "review_count": unit_review_count,
-                "attributes": unit_attributes,
+                # "attributes": unit_attributes,
             }
             books_list.append(book)
-        book_json = {response.meta["name"]: books_list}
+
+        book_json = {
+            "book_name": response.meta["name"],
+            "books_list": books_list,
+        }
 
         with open("4_get_group_book_data.json", "a") as f:
             json.dump(book_json, f, ensure_ascii=False, indent=4)
