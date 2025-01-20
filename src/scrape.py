@@ -22,7 +22,7 @@ class EstanteVirtual(scrapy.Spider):
 
     def start_requests(self):
         for page_index in range(1, 2141):
-            url_exatas = f"{self.base_url}/busca?tipo-de-livro=usado&categoria=ciencias-exatas&page={page_index}"
+            url_exatas = f"{self.base_url}/busca?xpage={page_index}"
             yield Request(url=url_exatas, headers=self.headers, callback=self.get_books)
 
     def get_books(self, response: Response):
@@ -115,11 +115,8 @@ class EstanteVirtual(scrapy.Spider):
             unit_type = sku["productType"]
             unit_list_price = sku["listPrice"]
             unit_sale_price = sku["salePrice"]
-            unit_discount_price = sku["discountPrice"]
             unit_is_avalilable = sku["available"]
             unit_image = sku["image"]
-            unit_review_stars = sku["reviewStars"]
-            unit_review_count = sku["reviewCount"]
             unit_attributes = sku["attributes"]
 
             book = {
@@ -132,11 +129,8 @@ class EstanteVirtual(scrapy.Spider):
                 "type": unit_type,
                 "list_price": unit_list_price,
                 "sale_price": unit_sale_price,
-                "discount_price": unit_discount_price,
                 "is_avalilable": unit_is_avalilable,
                 "image": unit_image,
-                "review_stars": unit_review_stars,
-                "review_count": unit_review_count,
                 # "attributes": unit_attributes,
             }
             books_list.append(book)
