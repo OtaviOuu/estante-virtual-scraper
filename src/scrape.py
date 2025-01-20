@@ -97,29 +97,50 @@ class EstanteVirtual(scrapy.Spider):
 
     def get_grup_book_data(self, response: Response):
         data = response.json()
-        units_quantity = data["total"]
-        books = data["parentSkus"]
 
         with open("3_get_group_book_data.json", "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
-        with open("len.txt", "a") as f:
-            f.write(response.meta["name"] + " " + str(len(books)) + "\n")
-
+        books_list = []
         skus = data["parentSkus"]
-        descs = []
         for sku in skus:
-            desc = sku["description"]
-            descs.append(desc)
+            unit_name = sku["name"]
+            unit_group_id = sku["itemGroupId"]
+            unit_id = sku["productCode"]
+            unit_description = sku["description"]
+            unit_is_group = sku["productGroup"]
+            unit_type = sku["productType"]
+            unit_list_price = sku["listPrice"]
+            unit_sale_price = sku["salePrice"]
+            unit_discount_price = sku["discountPrice"]
+            unit_is_avalilable = sku["available"]
+            unit_image = sku["image"]
+            unit_review_stars = sku["reviewStars"]
+            unit_review_count = sku["reviewCount"]
+            unit_attributes = sku["attributes"]
 
-        j = {
-            "name": response.meta["name"],
-            "author": response.meta["author"],
-            "description": descs,
-        }
+            book = {
+                "name": unit_name,
+                "group_id": unit_group_id,
+                "id": unit_id,
+                "description": unit_description,
+                "is_group": unit_is_group,
+                "type": unit_type,
+                "list_price": unit_list_price,
+                "sale_price": unit_sale_price,
+                "discount_price": unit_discount_price,
+                "is_avalilable": unit_is_avalilable,
+                "image": unit_image,
+                "review_stars": unit_review_stars,
+                "review_count": unit_review_count,
+                "attributes": unit_attributes,
+            }
+            books_list.append(book)
+        book_json = {response.meta["name"]: books_list}
 
-        with open("desc.json", "a") as f:
-            json.dump(j, f, ensure_ascii=False, indent=4)
+        with open("4_get_group_book_data.json", "a") as f:
+            json.dump(book_json, f, ensure_ascii=False, indent=4)
+            f.write("\n\n\n")
 
 
 process = CrawlerProcess(
