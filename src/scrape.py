@@ -30,6 +30,8 @@ class EstanteVirtual(scrapy.Spider):
             data_layer = json.loads(
                 response.css("script::text")[1].get().strip().split("= ")[1]
             )[0]
+            with open("1_get_books.json", "w") as f:
+                json.dump(data_layer, f, ensure_ascii=False, indent=4)
             books = data_layer["ecommerce"]["impressions"]
             for book in books:
                 book_name = book["name"]
@@ -66,37 +68,59 @@ class EstanteVirtual(scrapy.Spider):
         )
 
         data_json = json.loads(data_layer)
-        parents = data_json["Product"]["parents"]
-        for parent in parents:
-            skus = parent["skus"]
-            desc = []
-            for sku in skus:
-                unit_description = sku["description"]
-                unit_long_description = sku["longDescription"]
 
-                desc.append(unit_description)
+        with open("2_get_book_data.json", "w") as f:
+            json.dump(data_json, f, ensure_ascii=False, indent=4)
 
-                yield {
-                    "name": response.meta["book_name"],
-                    "author": response.meta["book_author"],
-                    "price": response.meta["book_price"],
-                    "link": response.meta["book_link"],
-                    "id": response.meta["book_id"],
-                    "descriptions": len(desc),
-                }
+        grup_book_id = data_json["Product"]["internalGroupSlug"]
+        grup_book_id = grup_book_id.split("-")[-4:]
+        grup_book_id = "-".join(grup_book_id).strip('"')
 
+        book_author = data_json["Product"]["author"]
+        grup_book_page_url = f"{self.base_url}/livro{grup_book_id}"
 
-""" 
-        yield { 
-            "name": response.meta["book_name"],
-            "author": response.meta["book_author"],
-            "price": response.meta["book_price"],
-            "link": response.meta["book_link"],
-            "id": response.meta["book_id"],
-            "quantity": json_book["total"],
-            "pages": json_book["totalPages"],
+        group_book_api_url = f"{self.base_url}/pdp-api/api/searchProducts/{grup_book_id}/usado?pageSize=-1"
+
+        yield Request(
+            url=group_book_api_url,
+            headers=self.headers,
+            callback=self.get_grup_book_data,
+            meta={
+                "name": response.meta["book_name"],
+                "author": response.meta["book_author"],
+                "price": response.meta["book_price"],
+                "link": response.meta["book_link"],
+                "id": response.meta["book_id"],
+                "group_book_id": grup_book_id,
+            },
+        )
+
+    def get_grup_book_data(self, response: Response):
+        data = response.json()
+        units_quantity = data["total"]
+        books = data["parentSkus"]
+
+        with open("3_get_group_book_data.json", "w") as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+
+        with open("len.txt", "a") as f:
+            f.write(response.meta["name"] + " " + str(len(books)) + "\n")
+
+        skus = data["parentSkus"]
+        descs = []
+        for sku in skus:
+            desc = sku["description"]
+            descs.append(desc)
+
+        j = {
+            "name": response.meta["name"],
+            "author": response.meta["author"],
+            "description": descs,
         }
- """
+
+        with open("desc.json", "a") as f:
+            json.dump(j, f, ensure_ascii=False, indent=4)
+
 
 process = CrawlerProcess(
     settings={
