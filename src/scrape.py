@@ -74,6 +74,9 @@ class EstanteVirtual(scrapy.Spider):
         with open("2_get_book_data.json", "w") as f:
             json.dump(data_json, f, ensure_ascii=False, indent=4)
         """
+        formated_atributes = data_json["Product"]["formattedAttributes"]
+        author = data_json["Product"]["author"]
+
         grup_book_id = data_json["Product"].get("internalGroupSlug", "")
         grup_book_id = grup_book_id.split("-")[-4:]
         grup_book_id = "-".join(grup_book_id).strip('"')
@@ -89,11 +92,12 @@ class EstanteVirtual(scrapy.Spider):
             callback=self.get_grup_book_data,
             meta={
                 "name": response.meta["book_name"],
-                "author": response.meta["book_author"],
+                "author": author,
                 "price": response.meta["book_price"],
                 "link": response.meta["book_link"],
                 "id": response.meta["book_id"],
                 "group_book_id": grup_book_id,
+                "formatted_atributes": formated_atributes,
             },
         )
 
@@ -104,6 +108,13 @@ class EstanteVirtual(scrapy.Spider):
         with open("3_get_group_book_data.json", "w") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
         """
+
+        aggregates = data["aggregates"]
+
+        for aggregate in aggregates:
+            if aggregate["keyName"] == "Categoria":
+                category = aggregate
+
         books_list = []
         skus = data["parentSkus"]
         for sku in skus:
@@ -118,6 +129,8 @@ class EstanteVirtual(scrapy.Spider):
             unit_is_avalilable = sku["available"]
             unit_image = sku["image"]
             unit_attributes = sku["attributes"]
+            unit_formated_attributes = response.meta["formatted_atributes"]
+            geral_category = category
 
             book = {
                 "name": unit_name,
@@ -131,7 +144,9 @@ class EstanteVirtual(scrapy.Spider):
                 "sale_price": unit_sale_price,
                 "is_avalilable": unit_is_avalilable,
                 "image": unit_image,
-                # "attributes": unit_attributes,
+                "link": f"{self.base_url}/livro/{slugify(unit_name)}-{unit_id}",
+                "attributes": unit_formated_attributes,
+                "category": geral_category,
             }
             books_list.append(book)
 
