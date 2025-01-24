@@ -16,7 +16,7 @@ class EstanteVirtual(Spider):
 
     def __init__(self, *args, **kwargs):
         super(EstanteVirtual, self).__init__(*args, **kwargs)
-        self.conn = sqlite3.connect("books.db")
+        self.conn = sqlite3.connect("books_categ.db")
         self.cursor = self.conn.cursor()
 
         self.cursor.execute(
@@ -174,12 +174,18 @@ class EstanteVirtual(Spider):
 
         try:
             aggregates = data["aggregates"]
-            category = next(
+            categorys = [
+                agg["buckets"] for agg in aggregates if agg["keyName"] == "Categoria"
+            ][0]
+
+            """            
+                category = next(
                 (agg["buckets"] for agg in aggregates if agg["keyName"] == "Categoria"),
                 [],
-            )
+            ) 
+            """
         except (KeyError, StopIteration):
-            category = []
+            categorys = []
 
         skus = data["parentSkus"]
         for sku in skus:
@@ -202,7 +208,7 @@ class EstanteVirtual(Spider):
                 "handling_time": response.meta["formatted_atributes"].get(
                     "handlingTime", ""
                 ),
-                "category": json.dumps(category),
+                "category": json.dumps(categorys),
             }
 
             try:
