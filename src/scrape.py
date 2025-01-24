@@ -15,33 +15,37 @@ class EstanteVirtual(Spider):
     base_url = f"https://www.estantevirtual.com.br"
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.conn = sqlite3.connect("estante_virtual.db")
+        super(EstanteVirtual, self).__init__(*args, **kwargs)
+        self.conn = sqlite3.connect("books.db")
         self.cursor = self.conn.cursor()
-        self._create_table()
 
-    def _create_table(self):
         self.cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS books (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 book_name TEXT,
                 author TEXT,
-                book_id TEXT,
+                book_id TEXT PRIMARY KEY,
                 book_group_id TEXT,
                 description TEXT,
-                is_group BOOLEAN,
+                is_group TEXT,
                 type TEXT,
                 list_price REAL,
                 sale_price REAL,
                 image TEXT,
                 link TEXT,
-                attributes TEXT,
+                publisher TEXT,
+                year TEXT,
+                language TEXT,
+                isbn TEXT,
+                handling_time TEXT,
                 category TEXT
             )
-            """
+        """
         )
         self.conn.commit()
+
+    def closed(self, reason):
+        self.conn.close()
 
     def start_requests(self):
         self.base_header = {
@@ -61,29 +65,15 @@ class EstanteVirtual(Spider):
         ).getall()
 
         for category in categorys:
-            url = f"{self.base_url}{category}?tipo-de-livro=novo"
+            url = f"{self.base_url}{category}?tipo-de-livro=usado"
 
             yield Request(
                 url=url,
                 headers=self.base_header,
                 callback=self.get_max_pagination,
             )
-            """for page_index in range(1, 30):
-            url = f"{self.base_url}{category}?tipo-de-livro=novo&page={page_index}"
-            yield Request(
-                url=url,
-                headers={
-                    "cookie": "for some reason this is needed",
-                    "user-agent": user_agent_rotator.get_random_user_agent(),
-                },
-                callback=self.get_books,
-            )
-            """
 
     def get_max_pagination(self, response: Response):
-        # last_page = response.css(".pagination__page::text").getall()
-        # last_page_index = last_page[-1].strip() if last_page else "1"
-
         results = response.css(".product-list-header__sort__text::text").get()
         if results:
             query_result = int(
@@ -154,7 +144,7 @@ class EstanteVirtual(Spider):
         grup_book_id = grup_book_id.split("-")[-4:]
         grup_book_id = "-".join(grup_book_id).strip('"')
 
-        group_book_api_url = f"{self.base_url}/pdp-api/api/searchProducts/{grup_book_id}/novo?pageSize=-1"
+        group_book_api_url = f"{self.base_url}/pdp-api/api/searchProducts/{grup_book_id}/usado?pageSize=-1"
 
         yield Request(
             url=group_book_api_url,
@@ -182,11 +172,14 @@ class EstanteVirtual(Spider):
                 f.write(response.url)
             return
 
-        aggregates = data["aggregates"]
-
-        for aggregate in aggregates:
-            if aggregate["keyName"] == "Categoria":
-                category = aggregate
+        try:
+            aggregates = data["aggregates"]
+            category = next(
+                (agg["buckets"] for agg in aggregates if agg["keyName"] == "Categoria"),
+                [],
+            )
+        except (KeyError, StopIteration):
+            category = []
 
         skus = data["parentSkus"]
         for sku in skus:
@@ -202,48 +195,40 @@ class EstanteVirtual(Spider):
                 "sale_price": sku["salePrice"],
                 "image": sku["image"],
                 "link": f"{self.base_url}/livro/{slugify(sku['name'])}-{sku['productCode']}",
-                "attributes": json.dumps(response.meta["formatted_atributes"]),
+                "publisher": response.meta["formatted_atributes"].get("publisher", ""),
+                "year": response.meta["formatted_atributes"].get("year", ""),
+                "language": response.meta["formatted_atributes"].get("language", ""),
+                "isbn": response.meta["formatted_atributes"].get("isbn", ""),
+                "handling_time": response.meta["formatted_atributes"].get(
+                    "handlingTime", ""
+                ),
                 "category": json.dumps(category),
             }
 
-            self.cursor.execute(
-                """
-                    INSERT INTO books (
-                        book_name, author, book_id, book_group_id, description,
-                        is_group, type, list_price, sale_price, image, link,
-                        attributes, category
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                (
-                    book_unit["book_name"],
-                    book_unit["author"],
-                    book_unit["book_id"],
-                    book_unit["book_group_id"],
-                    book_unit["description"],
-                    book_unit["is_group"],
-                    book_unit["type"],
-                    book_unit["list_price"] / 100,
-                    book_unit["sale_price"] / 100,
-                    book_unit["image"],
-                    book_unit["link"],
-                    book_unit["attributes"],
-                    book_unit["category"],
-                ),
-            )
-            self.conn.commit()
+            try:
+                self.cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO books (
+                        book_name, author, book_id, book_group_id, description, 
+                        is_group, type, list_price, sale_price, image, link, 
+                        publisher, year, language, isbn, handling_time, category
+                    ) VALUES (
+                        :book_name, :author, :book_id, :book_group_id, :description, 
+                        :is_group, :type, :list_price, :sale_price, :image, :link, 
+                        :publisher, :year, :language, :isbn, :handling_time, :category
+                    )
+                """,
+                    book_unit,
+                )
+                self.conn.commit()
+            except sqlite3.Error as e:
+                print(f"Database insertion error: {e}")
+                self.conn.rollback()
 
 
 process = CrawlerProcess(
     settings={
-        "FEEDS": {
-            "books.json": {
-                "format": "json",
-                "indent": 4,
-                "encoding": "utf-8",
-                "ensure_ascii": False,
-            },
-        },
-        "CONCURRENT_REQUESTS": 100,  
+        "CONCURRENT_REQUESTS": 100,
         "DOWNLOAD_DELAY": 0,
         "RETRY_ENABLED": False,
     }
