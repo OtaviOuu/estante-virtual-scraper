@@ -38,7 +38,8 @@ class EstanteVirtual(Spider):
                 language TEXT,
                 isbn TEXT,
                 handling_time TEXT,
-                category TEXT
+                category TEXT,
+                condition TEXT
             )
         """
         )
@@ -65,12 +66,21 @@ class EstanteVirtual(Spider):
         ).getall()
 
         for category in categorys:
-            url = f"{self.base_url}{category}?tipo-de-livro=usado"
+            url_usada = f"{self.base_url}{category}?tipo-de-livro=usado"
+            url_nova = f"{self.base_url}{category}?tipo-de-livro=novo"
 
             yield Request(
-                url=url,
+                url=url_usada,
                 headers=self.base_header,
                 callback=self.get_max_pagination,
+                meta={"condition": "usado"},
+            )
+
+            yield Request(
+                url=url_nova,
+                headers=self.base_header,
+                callback=self.get_max_pagination,
+                meta={"condition": "novo"},
             )
 
     def get_max_pagination(self, response: Response):
@@ -83,11 +93,12 @@ class EstanteVirtual(Spider):
             if last_page_index >= 238:
                 with open("./logs/max_pagination.txt", "a") as f:
                     f.write(f"{response.url} - {last_page_index}")
-            else:
-                return
+
             last_page_index = min(last_page_index, 682)
             for index in range(1, int(last_page_index) + 1):
                 url = f"{response.url}&page={index}"
+                with open("./logs/urls.txt", "a") as f:
+                    f.write(f"{url}\n")
                 yield Request(
                     url=url,
                     headers={
@@ -95,6 +106,7 @@ class EstanteVirtual(Spider):
                         "user-agent": user_agent_rotator.get_random_user_agent(),
                     },
                     callback=self.get_books,
+                    meta={"condition": response.meta["condition"]},
                 )
 
     def get_books(self, response: Response):
@@ -123,6 +135,7 @@ class EstanteVirtual(Spider):
                     "book_price": book_price,
                     "book_id": book_id,
                     "book_link": book_link,
+                    "condition": response.meta["condition"],
                 },
             )
 
@@ -143,8 +156,8 @@ class EstanteVirtual(Spider):
         grup_book_id = data_json["Product"].get("internalGroupSlug", "")
         grup_book_id = grup_book_id.split("-")[-4:]
         grup_book_id = "-".join(grup_book_id).strip('"')
-
-        group_book_api_url = f"{self.base_url}/pdp-api/api/searchProducts/{grup_book_id}/usado?pageSize=-1"
+        book_condition = response.meta["condition"]
+        group_book_api_url = f"{self.base_url}/pdp-api/api/searchProducts/{grup_book_id}/{book_condition}?pageSize=-1"
 
         yield Request(
             url=group_book_api_url,
@@ -161,6 +174,7 @@ class EstanteVirtual(Spider):
                 "id": response.meta["book_id"],
                 "group_book_id": grup_book_id,
                 "formatted_atributes": formated_atributes,
+                "condition": response.meta["condition"],
             },
         )
 
@@ -170,7 +184,6 @@ class EstanteVirtual(Spider):
         except json.JSONDecodeError:
             with open("./logs/get_grup_book_data/erro.txt", "w") as f:
                 f.write(response.url)
-            return
 
         try:
             aggregates = data["aggregates"]
@@ -209,6 +222,7 @@ class EstanteVirtual(Spider):
                     "handlingTime", ""
                 ),
                 "category": json.dumps(categorys),
+                "condition": response.meta["condition"],
             }
 
             try:
@@ -217,11 +231,11 @@ class EstanteVirtual(Spider):
                     INSERT OR REPLACE INTO books (
                         book_name, author, book_id, book_group_id, description, 
                         is_group, type, list_price, sale_price, image, link, 
-                        publisher, year, language, isbn, handling_time, category
+                        publisher, year, language, isbn, handling_time, category, condition
                     ) VALUES (
                         :book_name, :author, :book_id, :book_group_id, :description, 
                         :is_group, :type, :list_price, :sale_price, :image, :link, 
-                        :publisher, :year, :language, :isbn, :handling_time, :category
+                        :publisher, :year, :language, :isbn, :handling_time, :category, :condition
                     )
                 """,
                     book_unit,
@@ -229,14 +243,15 @@ class EstanteVirtual(Spider):
                 self.conn.commit()
             except sqlite3.Error as e:
                 print(f"Database insertion error: {e}")
+                with open("./logs/insertion_error.txt", "a") as f:
+                    f.write(f"{book_unit['book_name']}\n")
                 self.conn.rollback()
 
 
 process = CrawlerProcess(
     settings={
-        "CONCURRENT_REQUESTS": 100,
+        "CONCURRENT_REQUESTS": 1000,
         "DOWNLOAD_DELAY": 0,
-        "RETRY_ENABLED": False,
     }
 )
 
