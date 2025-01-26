@@ -16,7 +16,7 @@ class EstanteVirtual(Spider):
 
     def __init__(self, *args, **kwargs):
         super(EstanteVirtual, self).__init__(*args, **kwargs)
-        self.conn = sqlite3.connect("books_categ.db")
+        self.conn = sqlite3.connect("5k.db")
         self.cursor = self.conn.cursor()
 
         self.cursor.execute(
@@ -90,15 +90,10 @@ class EstanteVirtual(Spider):
                 results.strip().split("de ")[1].split(" resultados")[0].replace(".", "")
             )
             last_page_index = query_result // 44
-            if last_page_index >= 238:
-                with open("./logs/max_pagination.txt", "a") as f:
-                    f.write(f"{response.url} - {last_page_index}")
 
             last_page_index = min(last_page_index, 682)
             for index in range(1, int(last_page_index) + 1):
                 url = f"{response.url}&page={index}"
-                with open("./logs/urls.txt", "a") as f:
-                    f.write(f"{url}\n")
                 yield Request(
                     url=url,
                     headers={
@@ -157,7 +152,7 @@ class EstanteVirtual(Spider):
         grup_book_id = grup_book_id.split("-")[-4:]
         grup_book_id = "-".join(grup_book_id).strip('"')
         book_condition = response.meta["condition"]
-        group_book_api_url = f"{self.base_url}/pdp-api/api/searchProducts/{grup_book_id}/{book_condition}?pageSize=-1"
+        group_book_api_url = f"{self.base_url}/pdp-api/api/searchProducts/{grup_book_id}/{book_condition}?pageSize=99999&page=1"
 
         yield Request(
             url=group_book_api_url,
@@ -181,22 +176,10 @@ class EstanteVirtual(Spider):
     def get_grup_book_data(self, response: Response):
         try:
             data = json.loads(response.text)
-        except json.JSONDecodeError:
-            with open("./logs/get_grup_book_data/erro.txt", "w") as f:
-                f.write(response.url)
-
-        try:
             aggregates = data["aggregates"]
             categorys = [
                 agg["buckets"] for agg in aggregates if agg["keyName"] == "Categoria"
             ][0]
-
-            """            
-                category = next(
-                (agg["buckets"] for agg in aggregates if agg["keyName"] == "Categoria"),
-                [],
-            ) 
-            """
         except (KeyError, StopIteration):
             categorys = []
 
@@ -228,16 +211,16 @@ class EstanteVirtual(Spider):
             try:
                 self.cursor.execute(
                     """
-                    INSERT OR REPLACE INTO books (
-                        book_name, author, book_id, book_group_id, description, 
-                        is_group, type, list_price, sale_price, image, link, 
-                        publisher, year, language, isbn, handling_time, category, condition
-                    ) VALUES (
-                        :book_name, :author, :book_id, :book_group_id, :description, 
-                        :is_group, :type, :list_price, :sale_price, :image, :link, 
-                        :publisher, :year, :language, :isbn, :handling_time, :category, :condition
-                    )
-                """,
+                        INSERT OR REPLACE INTO books (
+                            book_name, author, book_id, book_group_id, description, 
+                            is_group, type, list_price, sale_price, image, link, 
+                            publisher, year, language, isbn, handling_time, category, condition
+                        ) VALUES (
+                            :book_name, :author, :book_id, :book_group_id, :description, 
+                            :is_group, :type, :list_price, :sale_price, :image, :link, 
+                            :publisher, :year, :language, :isbn, :handling_time, :category, :condition
+                        )
+                    """,
                     book_unit,
                 )
                 self.conn.commit()
@@ -250,7 +233,7 @@ class EstanteVirtual(Spider):
 
 process = CrawlerProcess(
     settings={
-        "CONCURRENT_REQUESTS": 1000,
+        "CONCURRENT_REQUESTS": 2000,
         "DOWNLOAD_DELAY": 0,
     }
 )
